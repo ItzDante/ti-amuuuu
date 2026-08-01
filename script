@@ -1,0 +1,728 @@
+(() => {
+  "use strict";
+
+  const LETTER_CONTENT = "(PEGA AQUÍ TU CARTA COMPLETA)";
+  const PETAL_SOURCES = [
+    "img/petals/petal-rose.svg",
+    "img/petals/petal-gold.svg",
+    "img/petals/petal-blush.svg",
+  ];
+  const BLOOM_SYMBOLS = ["❤️", "💗", "🌷", "✦", "✺"];
+
+  const dom = {};
+  const state = {
+    isReady: false,
+    isGiftOpen: false,
+    isEnvelopeOpen: false,
+    isFinalOpen: false,
+    petalRainActive: false,
+    audioStarted: false,
+  };
+
+  const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const select = (selector, parent = document) => parent.querySelector(selector);
+  const selectAll = (selector, parent = document) => Array.from(parent.querySelectorAll(selector));
+  const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
+  const random = (min, max) => gsap.utils.random(min, max);
+
+  function cacheDom() {
+    dom.loader = select("#giftLoader");
+    dom.loaderLine = select(".loader-line span");
+    dom.loaderMark = select(".loader-mark");
+    dom.experience = select("#giftExperience");
+    dom.ambient = select(".ambient");
+    dom.ambientBg = select(".ambient-bg");
+    dom.ambientPaper = select(".ambient-paper");
+    dom.canvas = select("#ambientCanvas");
+    dom.sceneIntro = select("#sceneIntro");
+    dom.sceneEnvelope = select("#sceneEnvelope");
+    dom.sceneLetter = select("#sceneLetter");
+    dom.bouquetShell = select("#bouquetShell");
+    dom.bouquetMain = select(".bouquet-main");
+    dom.bouquetGhosts = selectAll(".bouquet-ghost");
+    dom.introCopy = select(".intro-copy");
+    dom.openGift = select("#openGift");
+    dom.envelopeStage = select("#envelopeStage");
+    dom.envelope = select("#envelope");
+    dom.envelopeFlap = select("#envelopeFlap");
+    dom.letterPeek = select(".letter-peek");
+    dom.waxSeal = select("#waxSeal");
+    dom.sealGlow = select(".seal-glow");
+    dom.sealCracks = selectAll(".seal-crack");
+    dom.sealPieces = selectAll(".seal-piece");
+    dom.letterLayout = select(".letter-layout");
+    dom.letterCard = select(".letter-card");
+    dom.letterText = select("#letterText");
+    dom.typeCursor = select("#typeCursor");
+    dom.signature = select("#signature");
+    dom.photoFrame = select("#photoFrame");
+    dom.glassReflection = select(".glass-reflection");
+    dom.gratitude = select("#gratitude");
+    dom.heartButton = select("#heartButton");
+    dom.finalBloom = select("#finalBloom");
+    dom.bloomField = select("#bloomField");
+    dom.finalMessage = select(".final-message");
+    dom.paperSound = select("#paperSound");
+    dom.clickSound = select("#clickSound");
+    dom.musicTrack = select("#musicTrack");
+  }
+
+  const AudioStudio = {
+    context: null,
+    master: null,
+    musicNodes: [],
+
+    async start() {
+      if (state.audioStarted) return;
+      state.audioStarted = true;
+
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        this.context = new AudioContext();
+        this.master = this.context.createGain();
+        this.master.gain.value = 0.42;
+        this.master.connect(this.context.destination);
+        await this.context.resume();
+      } catch (error) {
+        this.context = null;
+      }
+
+      this.tryMedia(dom.musicTrack, 0.2, true);
+      this.startPad();
+    },
+
+    tryMedia(media, volume = 0.35, loop = false) {
+      if (!media) return;
+      media.volume = volume;
+      media.loop = loop;
+      const promise = media.play();
+      if (promise && typeof promise.catch === "function") {
+        promise.catch(() => {});
+      }
+    },
+
+    playClick() {
+      this.tryMedia(dom.clickSound, 0.42, false);
+      this.pluck(920, 0.16, 0.16);
+    },
+
+    playPaper() {
+      this.tryMedia(dom.paperSound, 0.38, false);
+      if (!this.context || !this.master) return;
+      const duration = 0.72;
+      const buffer = this.context.createBuffer(1, this.context.sampleRate * duration, this.context.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < data.length; i += 1) {
+        const t = i / data.length;
+        data[i] = (Math.random() * 2 - 1) * 0.14 * Math.pow(1 - t, 1.8);
+      }
+      const source = this.context.createBufferSource();
+      const filter = this.context.createBiquadFilter();
+      const gain = this.context.createGain();
+      source.buffer = buffer;
+      filter.type = "bandpass";
+      filter.frequency.value = 1850;
+      filter.Q.value = 0.6;
+      gain.gain.setValueAtTime(0.001, this.context.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.18, this.context.currentTime + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.001, this.context.currentTime + duration);
+      source.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.master);
+      source.start();
+    },
+
+    pluck(frequency, duration, volume) {
+      if (!this.context || !this.master) return;
+      const now = this.context.currentTime;
+      const oscillator = this.context.createOscillator();
+      const gain = this.context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, now);
+      oscillator.frequency.exponentialRampToValueAtTime(frequency * 1.8, now + duration * 0.72);
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(volume, now + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
+      oscillator.connect(gain);
+      gain.connect(this.master);
+      oscillator.start(now);
+      oscillator.stop(now + duration + 0.02);
+    },
+
+    startPad() {
+      if (!this.context || !this.master || this.musicNodes.length) return;
+      const now = this.context.currentTime;
+      const filter = this.context.createBiquadFilter();
+      const gain = this.context.createGain();
+      filter.type = "lowpass";
+      filter.frequency.value = 1250;
+      gain.gain.setValueAtTime(0.001, now);
+      gain.gain.exponentialRampToValueAtTime(0.12, now + 2.6);
+      filter.connect(gain);
+      gain.connect(this.master);
+
+      [261.63, 329.63, 392.0, 493.88].forEach((frequency, index) => {
+        const oscillator = this.context.createOscillator();
+        const lfo = this.context.createOscillator();
+        const lfoGain = this.context.createGain();
+        oscillator.type = "triangle";
+        oscillator.frequency.value = frequency;
+        lfo.frequency.value = 0.035 + index * 0.011;
+        lfoGain.gain.value = 2.4 + index * 0.6;
+        lfo.connect(lfoGain);
+        lfoGain.connect(oscillator.frequency);
+        oscillator.connect(filter);
+        oscillator.start(now);
+        lfo.start(now);
+        this.musicNodes.push(oscillator, lfo, lfoGain);
+      });
+      this.musicNodes.push(filter, gain);
+    },
+  };
+
+  const AmbientField = {
+    ctx: null,
+    particles: [],
+    width: 0,
+    height: 0,
+
+    init() {
+      if (!dom.canvas) return;
+      this.ctx = dom.canvas.getContext("2d");
+      this.resize();
+      window.addEventListener("resize", () => this.resize(), { passive: true });
+      gsap.ticker.add(() => this.draw());
+    },
+
+    resize() {
+      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      this.width = window.innerWidth;
+      this.height = window.innerHeight;
+      dom.canvas.width = Math.round(this.width * ratio);
+      dom.canvas.height = Math.round(this.height * ratio);
+      dom.canvas.style.width = `${this.width}px`;
+      dom.canvas.style.height = `${this.height}px`;
+      if (this.ctx) this.ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+      this.particles = Array.from({ length: Math.round(clamp(this.width / 18, 34, 94)) }, () => ({
+        x: Math.random() * this.width,
+        y: Math.random() * this.height,
+        radius: random(0.8, 2.2),
+        speed: random(0.05, 0.22),
+        drift: random(-0.08, 0.08),
+        alpha: random(0.16, 0.46),
+        hue: random(24, 348),
+      }));
+    },
+
+    draw() {
+      if (!this.ctx) return;
+      this.ctx.clearRect(0, 0, this.width, this.height);
+      this.particles.forEach((particle) => {
+        particle.y -= particle.speed;
+        particle.x += particle.drift;
+        if (particle.y < -12) {
+          particle.y = this.height + 12;
+          particle.x = Math.random() * this.width;
+        }
+        if (particle.x < -12) particle.x = this.width + 12;
+        if (particle.x > this.width + 12) particle.x = -12;
+
+        const gradient = this.ctx.createRadialGradient(
+          particle.x,
+          particle.y,
+          0,
+          particle.x,
+          particle.y,
+          particle.radius * 7,
+        );
+        gradient.addColorStop(0, `hsla(${particle.hue}, 62%, 82%, ${particle.alpha})`);
+        gradient.addColorStop(1, "rgba(255,255,255,0)");
+        this.ctx.fillStyle = gradient;
+        this.ctx.beginPath();
+        this.ctx.arc(particle.x, particle.y, particle.radius * 7, 0, Math.PI * 2);
+        this.ctx.fill();
+      });
+    },
+  };
+
+  const PetalStudio = {
+    rainCall: null,
+
+    startRain() {
+      if (state.petalRainActive) return;
+      state.petalRainActive = true;
+      this.loopRain();
+    },
+
+    stopRain() {
+      state.petalRainActive = false;
+      if (this.rainCall) this.rainCall.kill();
+    },
+
+    loopRain() {
+      if (!state.petalRainActive) return;
+      this.spawnPetal();
+      this.rainCall = gsap.delayedCall(random(0.16, 0.42), () => this.loopRain());
+    },
+
+    spawnPetal(options = {}) {
+      const petal = document.createElement("img");
+      petal.className = "petal";
+      petal.src = gsap.utils.random(PETAL_SOURCES);
+      petal.alt = "";
+      petal.setAttribute("aria-hidden", "true");
+      const size = options.size || random(18, 48);
+      petal.style.setProperty("--size", `${size}px`);
+      document.body.appendChild(petal);
+
+      const startX = options.x ?? random(-40, window.innerWidth + 40);
+      const drift = options.drift ?? random(-140, 140);
+      const duration = options.duration ?? random(6.5, 12.5);
+      const rotation = random(-220, 220);
+
+      gsap.fromTo(
+        petal,
+        {
+          autoAlpha: 0,
+          x: startX,
+          y: -90,
+          rotate: rotation,
+          scale: random(0.72, 1.18),
+        },
+        {
+          autoAlpha: random(0.52, 0.92),
+          x: startX + drift,
+          y: window.innerHeight + 140,
+          rotate: rotation + random(220, 680),
+          duration,
+          ease: "none",
+          onComplete: () => petal.remove(),
+        },
+      );
+      gsap.to(petal, {
+        x: `+=${random(-44, 44)}`,
+        repeat: Math.round(duration / 1.4),
+        yoyo: true,
+        duration: random(1.1, 1.9),
+        ease: "sine.inOut",
+      });
+    },
+
+    bloomBurst() {
+      const total = window.innerWidth < 720 ? 86 : 148;
+      for (let index = 0; index < total; index += 1) {
+        const piece = document.createElement("span");
+        piece.className = "bloom-piece";
+        piece.setAttribute("aria-hidden", "true");
+        const useImage = Math.random() > 0.45;
+        const size = random(18, window.innerWidth < 720 ? 42 : 58);
+        piece.style.setProperty("--size", `${size}px`);
+
+        if (useImage) {
+          const img = document.createElement("img");
+          img.src = gsap.utils.random(PETAL_SOURCES);
+          img.alt = "";
+          piece.appendChild(img);
+        } else {
+          piece.textContent = gsap.utils.random(BLOOM_SYMBOLS);
+        }
+
+        dom.bloomField.appendChild(piece);
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+        const angle = random(0, Math.PI * 2);
+        const distance = random(120, Math.max(window.innerWidth, window.innerHeight) * 0.74);
+
+        gsap.fromTo(
+          piece,
+          {
+            autoAlpha: 0,
+            x: centerX,
+            y: centerY,
+            scale: 0,
+            rotate: random(-80, 80),
+          },
+          {
+            autoAlpha: random(0.72, 1),
+            x: centerX + Math.cos(angle) * distance,
+            y: centerY + Math.sin(angle) * distance,
+            scale: random(0.64, 1.4),
+            rotate: random(-540, 540),
+            duration: random(2.4, 5.2),
+            delay: index * 0.012,
+            ease: "power3.out",
+          },
+        );
+
+        gsap.to(piece, {
+          y: `+=${random(70, 190)}`,
+          rotate: `+=${random(-180, 180)}`,
+          duration: random(5.5, 9),
+          delay: random(1.6, 3.8),
+          ease: "sine.inOut",
+          repeat: -1,
+          yoyo: true,
+        });
+      }
+    },
+  };
+
+  function setScene(scene) {
+    [dom.sceneIntro, dom.sceneEnvelope, dom.sceneLetter].forEach((item) => {
+      if (!item) return;
+      item.classList.toggle("is-active", item === scene);
+      gsap.set(item, {
+        autoAlpha: item === scene ? 1 : 0,
+        pointerEvents: item === scene ? "auto" : "none",
+      });
+    });
+  }
+
+  function initLenis() {
+    if (!window.Lenis) return;
+    const lenis = new Lenis({
+      lerp: 0.08,
+      wheelMultiplier: 0.7,
+      touchMultiplier: 0.8,
+      smoothWheel: true,
+    });
+
+    function raf(time) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+
+    requestAnimationFrame(raf);
+  }
+
+  function prepareInitialState() {
+    gsap.set(dom.loaderLine, { scaleX: 0 });
+    gsap.set(".loader-mark span", { transformOrigin: "50% 94%" });
+    gsap.set(".intro-copy .char", { yPercent: 120, opacity: 0, rotateX: -32 });
+    gsap.set([dom.bouquetShell, dom.openGift], { autoAlpha: 0 });
+    gsap.set(dom.bouquetShell, { y: 28, scale: 0.92, rotate: -2 });
+    gsap.set(dom.openGift, { y: 18, scale: 0.96 });
+    gsap.set(dom.sceneEnvelope, { autoAlpha: 0, pointerEvents: "none" });
+    gsap.set(dom.sceneLetter, { autoAlpha: 0, pointerEvents: "none" });
+    gsap.set(dom.envelopeStage, { autoAlpha: 0, y: 80, rotateX: 12, scale: 0.92 });
+    gsap.set(dom.envelopeFlap, { rotateX: 0 });
+    gsap.set(dom.letterPeek, { yPercent: 32 });
+    gsap.set(dom.sealCracks, { height: 0, opacity: 0 });
+    gsap.set(dom.sealPieces, { autoAlpha: 0 });
+    gsap.set([dom.letterCard, dom.photoFrame], { autoAlpha: 0, y: 42 });
+    gsap.set(dom.typeCursor, { opacity: 1 });
+    gsap.set(dom.signature, { autoAlpha: 0, y: 18, rotate: -2 });
+    gsap.set(dom.gratitude, { autoAlpha: 0, y: 24 });
+    gsap.set(dom.finalBloom, { autoAlpha: 0, pointerEvents: "none" });
+    gsap.set(dom.finalMessage, { autoAlpha: 0, y: 34, scale: 0.96 });
+  }
+
+  function introTimeline() {
+    const chars = selectAll(".intro-copy .char");
+    const tl = gsap.timeline({
+      defaults: {
+        ease: "power3.out",
+      },
+      onComplete: () => {
+        state.isReady = true;
+        shimmerButton();
+      },
+    });
+
+    tl.to(dom.loaderLine, { scaleX: 1, duration: 1.4, ease: "power2.inOut" })
+      .to(".loader-mark span", { y: -7, repeat: 3, yoyo: true, stagger: 0.1, duration: 0.32, ease: "sine.inOut" }, 0.1)
+      .to(dom.loader, { autoAlpha: 0, duration: 1.1, ease: "power2.inOut" }, "+=0.25")
+      .fromTo(dom.ambientPaper, { autoAlpha: 0, scale: 1.06 }, { autoAlpha: 0.52, scale: 1, duration: 2.4 }, "-=0.55")
+      .to(dom.bouquetShell, { autoAlpha: 1, y: 0, scale: 1, rotate: 0, duration: 1.8 }, "-=1.65")
+      .to(chars, { yPercent: 0, opacity: 1, rotateX: 0, duration: 1.18, stagger: 0.018 }, "-=1.05")
+      .to(dom.openGift, { autoAlpha: 1, y: 0, scale: 1, duration: 0.92 }, "-=0.58");
+
+    gsap.to(dom.bouquetShell, {
+      y: -10,
+      rotate: 1.2,
+      duration: 5.2,
+      yoyo: true,
+      repeat: -1,
+      ease: "sine.inOut",
+    });
+  }
+
+  function shimmerButton() {
+    gsap.to(".primary-button i", {
+      xPercent: 220,
+      duration: 1.4,
+      repeat: -1,
+      repeatDelay: 2.8,
+      ease: "power2.inOut",
+    });
+  }
+
+  function bindMagneticButton() {
+    const button = dom.openGift;
+    if (!button || window.matchMedia("(pointer: coarse)").matches) return;
+    button.addEventListener("pointermove", (event) => {
+      const rect = button.getBoundingClientRect();
+      const x = event.clientX - rect.left - rect.width / 2;
+      const y = event.clientY - rect.top - rect.height / 2;
+      gsap.to(button, {
+        x: x * 0.16,
+        y: y * 0.16,
+        duration: 0.42,
+        ease: "power3.out",
+      });
+    });
+    button.addEventListener("pointerleave", () => {
+      gsap.to(button, { x: 0, y: 0, duration: 0.64, ease: "elastic.out(1, 0.45)" });
+    });
+  }
+
+  async function openGift() {
+    if (!state.isReady || state.isGiftOpen) return;
+    state.isGiftOpen = true;
+    await AudioStudio.start();
+    AudioStudio.playClick();
+    PetalStudio.startRain();
+
+    const tl = gsap.timeline({
+      defaults: {
+        ease: "power3.inOut",
+      },
+      onStart: () => {
+        gsap.set(dom.sceneEnvelope, { autoAlpha: 1, visibility: "visible" });
+      },
+      onComplete: () => {
+        setScene(dom.sceneEnvelope);
+      },
+    });
+
+    tl.to(dom.ambientBg, { scale: 1.16, duration: 3.2, ease: "power2.inOut" }, 0)
+      .to(dom.ambientPaper, { opacity: 0.64, duration: 2.4 }, 0)
+      .to(dom.openGift, { autoAlpha: 0, y: 24, scale: 0.94, duration: 0.64 }, 0)
+      .to(".intro-copy .char", { yPercent: -120, opacity: 0, rotateX: 32, stagger: 0.01, duration: 0.82 }, 0.05)
+      .to(dom.bouquetMain, { autoAlpha: 0.12, y: -52, scale: 1.08, duration: 1.1 }, 0.12)
+      .to(dom.bouquetGhosts[0], { autoAlpha: 0.26, x: "-42vw", y: 20, rotate: -18, scale: 0.88, duration: 1.35 }, 0.15)
+      .to(dom.bouquetGhosts[1], { autoAlpha: 0.22, x: "42vw", y: 26, rotate: 18, scale: 0.88, duration: 1.35 }, 0.15)
+      .to(dom.bouquetShell, { y: 30, scale: 0.96, duration: 1.3 }, 0.12)
+      .to(dom.envelopeStage, { autoAlpha: 1, y: 0, rotateX: 0, scale: 1, duration: 1.42, ease: "expo.out" }, 0.74)
+      .fromTo(
+        dom.envelope,
+        { rotateY: -8, rotateZ: -2 },
+        { rotateY: 0, rotateZ: 0, duration: 1.8, ease: "elastic.out(1, 0.72)" },
+        0.78,
+      )
+      .to(dom.sceneIntro, { autoAlpha: 0, duration: 0.7 }, 1.22);
+  }
+
+  function openEnvelope() {
+    if (!state.isGiftOpen || state.isEnvelopeOpen) return;
+    state.isEnvelopeOpen = true;
+    AudioStudio.playClick();
+    AudioStudio.playPaper();
+
+    const tl = gsap.timeline({
+      defaults: {
+        ease: "power3.inOut",
+      },
+    });
+
+    tl.to(dom.sealGlow, { scale: 1.8, opacity: 0, duration: 0.42, ease: "power2.out" }, 0)
+      .to(dom.sealCracks, { height: 36, opacity: 1, duration: 0.26, stagger: 0.05, ease: "power2.out" }, 0.02)
+      .to(dom.waxSeal, { scale: 0.88, opacity: 0, duration: 0.24, ease: "power2.in" }, 0.34)
+      .to(
+        dom.sealPieces,
+        {
+          autoAlpha: 1,
+          x: (index) => [-74, 62, 6][index],
+          y: (index) => [-44, -20, 64][index],
+          rotate: (index) => [-42, 36, 112][index],
+          scale: (index) => [1, 0.86, 0.62][index],
+          duration: 0.82,
+          stagger: 0.025,
+          ease: "power4.out",
+        },
+        0.3,
+      )
+      .to(dom.sealPieces, { opacity: 0, duration: 0.42, stagger: 0.03 }, 0.78)
+      .to(dom.envelopeFlap, { rotateX: -178, y: -6, duration: 1.18, ease: "expo.inOut" }, 0.68)
+      .to(dom.letterPeek, { yPercent: -42, duration: 1.4, ease: "power3.inOut" }, 0.88)
+      .to(dom.envelope, { y: 42, rotateX: 4, scale: 0.96, duration: 1.2 }, 1.24)
+      .to(dom.sceneEnvelope, { autoAlpha: 0, duration: 0.9, ease: "power2.inOut" }, 2.02)
+      .call(() => {
+        setScene(dom.sceneLetter);
+        revealLetterScene();
+      });
+  }
+
+  function revealLetterScene() {
+    const tl = gsap.timeline({
+      defaults: {
+        ease: "power3.out",
+      },
+      onComplete: typeLetter,
+    });
+
+    tl.fromTo(dom.letterLayout, { y: 48, scale: 0.98 }, { y: 0, scale: 1, duration: 1.3, ease: "expo.out" })
+      .to(dom.letterCard, { autoAlpha: 1, y: 0, duration: 1.05 }, 0.05)
+      .to(dom.photoFrame, { autoAlpha: 1, y: 0, rotateY: -2, duration: 1.15 }, 0.28)
+      .fromTo(
+        ".letter-topline span",
+        { scaleX: 0, transformOrigin: "center" },
+        { scaleX: 1, duration: 0.86, stagger: 0.12 },
+        0.46,
+      );
+  }
+
+  function typeLetter() {
+    const text = LETTER_CONTENT;
+    dom.letterText.textContent = "";
+    gsap.to(dom.typeCursor, { opacity: 0, duration: 0.48, repeat: -1, yoyo: true, ease: "sine.inOut" });
+
+    let index = 0;
+    const writeNext = () => {
+      if (index > text.length) {
+        finishLetter();
+        return;
+      }
+
+      dom.letterText.textContent = text.slice(0, index);
+      const char = text[index - 1] || "";
+      index += 1;
+
+      let delay = random(0.035, 0.072);
+      if (char === "." || char === "!" || char === "?") delay += 0.34;
+      if (char === "," || char === ";") delay += 0.14;
+      if (char === "\n") delay += 0.48;
+      gsap.delayedCall(prefersReducedMotion ? 0.004 : delay, writeNext);
+    };
+
+    writeNext();
+  }
+
+  function finishLetter() {
+    const tl = gsap.timeline({
+      defaults: {
+        ease: "power3.out",
+      },
+    });
+
+    tl.to(dom.signature, { autoAlpha: 1, y: 0, rotate: -1, duration: 1.1 })
+      .to(dom.gratitude, {
+        autoAlpha: 1,
+        y: 0,
+        duration: 1.05,
+        onStart: () => dom.gratitude.classList.add("is-visible"),
+      }, "+=0.48")
+      .fromTo(
+        ".heart-button span",
+        { scale: 0.72, rotate: -8 },
+        { scale: 1, rotate: 0, duration: 0.9, ease: "elastic.out(1, 0.5)" },
+        "<+0.28",
+      )
+      .to(".heart-button", {
+        scale: 1.08,
+        duration: 1.15,
+        yoyo: true,
+        repeat: -1,
+        ease: "sine.inOut",
+      });
+  }
+
+  function openFinalBloom() {
+    if (state.isFinalOpen) return;
+    state.isFinalOpen = true;
+    AudioStudio.playClick();
+    PetalStudio.stopRain();
+    dom.finalBloom.classList.add("is-visible");
+
+    const tl = gsap.timeline({
+      defaults: {
+        ease: "power3.out",
+      },
+      onStart: () => {
+        dom.finalBloom.style.pointerEvents = "auto";
+        PetalStudio.bloomBurst();
+      },
+    });
+
+    tl.to(dom.finalBloom, { autoAlpha: 1, duration: 0.8 })
+      .to(dom.sceneLetter, { filter: "blur(10px)", scale: 0.98, autoAlpha: 0.16, duration: 1.4 }, 0.1)
+      .to(dom.finalMessage, { autoAlpha: 1, y: 0, scale: 1, duration: 1.25, ease: "expo.out" }, 1.0)
+      .fromTo(
+        ".final-message span",
+        { y: 18, scale: 0.8, opacity: 0 },
+        { y: 0, scale: 1, opacity: 1, duration: 0.84, ease: "back.out(1.8)" },
+        1.72,
+      );
+  }
+
+  function bindPhotoFrame() {
+    if (!dom.photoFrame || window.matchMedia("(pointer: coarse)").matches) return;
+    dom.photoFrame.addEventListener("pointermove", (event) => {
+      const rect = dom.photoFrame.getBoundingClientRect();
+      const px = (event.clientX - rect.left) / rect.width - 0.5;
+      const py = (event.clientY - rect.top) / rect.height - 0.5;
+      gsap.to(dom.photoFrame, {
+        rotateY: px * 13,
+        rotateX: -py * 10,
+        y: -8,
+        duration: 0.55,
+        ease: "power3.out",
+      });
+      gsap.to(dom.glassReflection, {
+        xPercent: px * 38,
+        yPercent: py * 22,
+        duration: 0.55,
+        ease: "power3.out",
+      });
+    });
+
+    dom.photoFrame.addEventListener("pointerleave", () => {
+      gsap.to(dom.photoFrame, {
+        rotateY: 0,
+        rotateX: 0,
+        y: 0,
+        duration: 0.86,
+        ease: "elastic.out(1, 0.6)",
+      });
+      gsap.to(dom.glassReflection, {
+        xPercent: 0,
+        yPercent: 0,
+        duration: 0.86,
+        ease: "power3.out",
+      });
+    });
+  }
+
+  function bindEvents() {
+    dom.openGift.addEventListener("click", openGift);
+    dom.waxSeal.addEventListener("click", openEnvelope);
+    dom.heartButton.addEventListener("click", openFinalBloom);
+    bindMagneticButton();
+    bindPhotoFrame();
+  }
+
+  function init() {
+    if (!window.gsap) {
+      document.documentElement.classList.add("no-gsap");
+      return;
+    }
+
+    cacheDom();
+    if (window.Splitting) Splitting();
+    initLenis();
+    prepareInitialState();
+    AmbientField.init();
+    bindEvents();
+
+    window.addEventListener("load", () => {
+      introTimeline();
+    });
+
+    if (document.readyState === "complete") {
+      introTimeline();
+    }
+  }
+
+  init();
+})();
