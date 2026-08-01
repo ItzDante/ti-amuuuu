@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Para mi niña preciosa 🌷</title>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@300;400;500;600&family=Allura&display=swap" rel="stylesheet">
+
+    <link rel="stylesheet" href="style.css">
+
+</head>
+
+<body>
+
+    <!-- PRELOADER -->
+
+    <div id="loader">
+
+        <div class="loader-content">
+
+            <div class="loader-flower"></div>
+
+            <p>Cargando tu regalo...</p>
+
+        </div>
+
+    </div>
+
+    <!-- FONDO -->
+
+    <div class="background"></div>
+
+    <div class="noise"></div>
+
+    <div id="petals"></div>
+
+    <!-- SCENE 1 -->
+
+    <section id="intro" class="scene active">
+
+        <div class="intro-content">
+
+            <div class="bouquet-container">
+
+                <img src="img/bouquet.svg" alt="Bouquet" id="bouquet">
+
+            </div>
+
+            <span class="subtitle">
+
+                Para mi niña preciosa
+
+            </span>
+
+            <h1>
+
+                Feliz Día de la Novia
+
+            </h1>
+
+            <p>
+
+                1 de Agosto
+
+            </p>
+
+            <button id="openGift">
+
+                Abrir mi regalo
+
+            </button>
+
+        </div>
+
+    </section>
+
+    <!-- SCENE 2 -->
+
+    <section id="envelopeScene" class="scene">
+
+        <div class="envelope-wrapper">
+
+            <div id="envelope">
+
+                <div class="envelope-back"></div>
+
+                <div class="envelope-flap"></div>
+
+                <div class="wax-seal"></div>
+
+                <div class="letter-inside"></div>
+
+            </div>
+
+            <p>
+
+                Haz clic en el sello ❤️
+
+            </p>
+
+        </div>
+
+    </section>
+
+    <!-- SCENE 3 -->
+
+    <section id="letterScene" class="scene">
+
+        <div class="layout">
+
+            <!-- CARTA -->
+
+            <article class="letter">
+
+                <div class="paper">
+
+                    <h2>
+
+                        Para mi niña preciosa 💗
+
+                    </h2>
+
+                    <div id="typedText"></div>
+
+                    <div class="signature">
+
+                        Tu chiquito precioso
+
+                    </div>
+
+                </div>
+
+            </article>
+
+            <!-- FOTO -->
+
+            <aside class="photo">
+
+                <div class="frame">
+
+                    <img src="img/novia.jpg" alt="Mi niña">
+
+                    <div class="glass"></div>
+
+                </div>
+
+                <p>
+
+                    Mi persona favorita.
+
+                    <br>
+
+                    💗🌷🐌
+
+                </p>
+
+            </aside>
+
+        </div>
+
+    </section>
+
+    <!-- SCENE 4 -->
+
+    <section id="ending" class="scene">
+
+        <div class="ending-content">
+
+            <h2>
+
+                Gracias por dejarme quererte.
+
+            </h2>
+
+            <button id="loveButton">
+
+                ❤️
+
+            </button>
+
+            <div id="flowersExplosion"></div>
+
+            <h1>
+
+                Feliz Día de la Novia
+
+            </h1>
+
+            <p>
+
+                Te amo muchísimo.
+
+            </p>
+
+            <span>
+
+                💗🌷🐌
+
+            </span>
+
+        </div>
+
+    </section>
+
+    <!-- AUDIO -->
+
+    <audio id="music" loop>
+
+        <source src="music/music.mp3" type="audio/mpeg">
+
+    </audio>
+
+    <audio id="paperSound">
+
+        <source src="sounds/paper.mp3" type="audio/mpeg">
+
+    </audio>
+
+    <audio id="clickSound">
+
+        <source src="sounds/click.mp3" type="audio/mpeg">
+
+    </audio>
+
+    <script src="script.js"></script>
+
+</body>
+
+</html>
